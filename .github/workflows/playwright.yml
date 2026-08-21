@@ -1,0 +1,111 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  schedule:
+    # Nightly regression at 02:00 UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Only run tests matching this tag (e.g. @smoke)'
+        required: false
+        default: ''
+
+jobs:
+  static-analysis:
+    name: Typecheck & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+
+  e2e:
+    name: Playwright (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: static-analysis
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [guest, chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run tests
+        run: npx playwright test --project=${{ matrix.project }} --grep-invert @flow ${{ github.event.inputs.grep && format('--grep {0}', github.event.inputs.grep) || '' }}
+        env:
+          CI: true
+          BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME || 'Admin' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'admin123' }}
+
+      - name: Upload HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload traces & screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ matrix.project }}
+          path: test-results/
+          retention-days: 7
+
+  flows:
+    name: E2E journeys (@flow)
+    # Journeys are slower and create more data on the shared demo, so they are not on the
+    # PR path - they run nightly and on demand.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: static-analysis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run journeys
+        run: npm run test:flows
+        env:
+          CI: true
+          BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME || 'Admin' }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'admin123' }}
+
+      - name: Upload HTML report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-flows
+          path: playwright-report/
+          retention-days: 14

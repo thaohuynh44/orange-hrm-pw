@@ -1,0 +1,59 @@
+{
+  "name": "orange-hrm-pw",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "PWDEBUG=1 playwright test --debug",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:auth": "playwright test --project=guest",
+    "test:pim": "playwright test --grep @pim",
+    "test:admin": "playwright test --grep @admin",
+    "test:readonly": "playwright test --grep-invert @write",
+    "test:flows": "playwright test tests/flows --project=chromium",
+    "test:features": "playwright test --grep-invert @flow",
+    "test:seed": "playwright test tests/seed.spec.ts --project=chromium",
+    "test:all-browsers": "ALL_BROWSERS=true playwright test",
+    "test:chromium": "playwright test --project=chromium --project=guest --project=setup",
+    "report": "playwright show-report",
+    "trace": "playwright show-trace",
+    "codegen": "playwright codegen https://opensource-demo.orangehrmlive.com",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "verify": "npm run typecheck && npm run lint && npm run format:check",
+    "install:browsers": "playwright install --with-deps",
+    "clean": "rm -rf test-results playwright-report blob-report .auth"
+  },
+  "keywords": [
+    "playwright",
+    "typescript",
+    "e2e",
+    "automation",
+    "orangehrm",
+    "page-object-model"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Playwright + TypeScript E2E automation framework for the OrangeHRM demo site",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@faker-js/faker": "^10.6.0",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^26.2.0",
+    "dotenv": "^17.4.2",
+    "eslint": "^10.8.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-playwright": "^2.11.0",
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.0",
+    "typescript-eslint": "^8.67.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}
