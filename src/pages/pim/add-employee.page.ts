@@ -146,9 +146,4 @@ export class AddEmployeePage extends BasePage {
   async submitEmpty(): Promise<void> {
     await this.save();
   }
-
-  async validationMessages(): Promise<string[]> {
-    await expect(this.validationErrors.first()).toBeVisible();
-    return (await this.validationErrors.allInnerTexts()).map((t) => t.trim());
-  }
 }
