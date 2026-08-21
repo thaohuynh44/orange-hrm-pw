@@ -39,8 +39,8 @@
     "orangehrm",
     "page-object-model"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "thaohuynh <avery.thao@bakuun.com>",
+  "license": "UNLICENSED",
   "description": "Playwright + TypeScript E2E automation framework for the OrangeHRM demo site",
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -15,6 +15,54 @@ npm test
 
 Reports: `npm run report` (HTML), `npm run trace test-results/<dir>/trace.zip` (trace viewer).
 
+## Key design decisions
+
+The app under test is a **public demo instance, shared with the world, whose data resets without
+warning** — no source, no seeding hooks, no `data-testid`. Every decision below follows from that
+one fact; each links to the section that expands on it.
+
+- **Fixture-injected Page Object Model.** Specs import `test`/`expect` from
+  `src/fixtures/test.fixture.ts` — never from `@playwright/test` — and receive page objects as
+  arguments. A spec that constructs its own page objects duplicates setup and drifts from its
+  neighbours; as fixtures, a test's dependencies _are_ its signature.
+  → [Project layout](#project-layout), [Adding a test](#adding-a-test)
+- **Components wrap the OXD widgets; no spec touches an `.oxd-*` class.** The demo ships no test
+  ids, so class hooks are unavoidable _somewhere_ — confining them to `src/core/components/` makes
+  a widget change one edit instead of forty.
+  → [Conventions](#conventions)
+- **Log in once, in a project of its own.** `global.setup.ts` signs in and stores the session in
+  `.auth/admin.json`; the `guest` and `chromium` projects split on whether they load it. Paying for
+  the login form once instead of once per authenticated spec is the largest single saving available
+  against a slow shared instance, so a test that must be signed out belongs in `tests/auth/` rather
+  than logging the session out mid-run.
+  → [How authentication works](#how-authentication-works)
+- **One module owns every URL and every timeout.** `src/config/env.ts` holds the `routes` map and
+  the five timeout budgets, so no `ms` literal and no hard-coded path appears anywhere in `src/` or
+  `tests/`. Retuning for a slow day is one file, not a grep.
+  → [Configuration](#configuration)
+- **No `waitForTimeout`, anywhere.** Grid actions await the REST call that backs them and then wait
+  for the grid to commit to a record count or the empty state; writes race their own `PUT`/`DELETE`
+  through `BasePage.apiResponse()`, which carries a navigation-grade budget the demo's slower saves
+  need. Sleeps would be both slower and less reliable than the signal they approximate.
+  → [Conventions](#conventions)
+- **The API client verifies; it never drives.** `src/api/pim.api.ts` rides the browser's
+  authenticated session read-only, confirming what the UI just did. Seeding through the API would
+  make the suite prove the API works while skipping the screen it exists to test.
+  → [Project layout](#project-layout)
+- **Feature tests and journeys are separate test types.** `tests/<module>/` proves one behaviour on
+  one screen and stays fast and mostly read-only; `tests/flows/` proves one business outcome across
+  modules, written against the task layer in `src/tasks/` and staged with `test.step()`. Mixing them
+  yields journeys that re-assert field validation and feature tests that need three modules to pass.
+  → [Two kinds of test](#two-kinds-of-test), [The task layer](#the-task-layer)
+- **Assert on shape, not on the demo's current data.** `expect(count).toBeGreaterThan(0)`, never
+  `=== 143`, and generated employees (`buildEmployee()`) instead of fixed names, so parallel workers
+  and repeat runs never collide.
+  → [Shared demo data — important](#shared-demo-data--important)
+- **`@write` runs off the PR path.** Creating an employee is reversible and the lifecycle journey
+  hands its record back, but the ESS login account the role suites need is not — the demo offers no
+  way to delete it. So writes and journeys run nightly and on demand, and the PR path is read-only.
+  → [Tags](#tags), [CI](#ci)
+
 ## Project layout
 
 ```
@@ -328,9 +376,23 @@ Point `BASE_URL` at a private instance to remove all three caveats.
 
 ## Configuration
 
-All knobs live in `.env` (see `.env.example`) and are parsed and validated in `src/config/env.ts`:
-`BASE_URL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `HEADLESS`, `WORKERS`, `RETRIES`, `SLOW_MO`,
-`ACTION_TIMEOUT`, `NAVIGATION_TIMEOUT`, `EXPECT_TIMEOUT`, `TEST_TIMEOUT`, `TRACE`.
+All knobs live in `.env` (see `.env.example`) and are parsed and validated in `src/config/env.ts` —
+nothing else in the repo reads `process.env`.
+
+| Variable                                                                                       | Default                               | Purpose                                                                                                                                           |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BASE_URL`                                                                                     | the public demo                       | Application under test; point it at a private instance to allow writes                                                                            |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD`                                                            | `Admin` / `admin123`                  | Account `global.setup.ts` signs in as                                                                                                             |
+| `HEADLESS`                                                                                     | `true`                                | Set `false` to watch a run                                                                                                                        |
+| `WORKERS`                                                                                      | `4` locally, `2` in CI                | Parallel workers                                                                                                                                  |
+| `RETRIES`                                                                                      | `1` locally, `2` in CI                | Retries per test — the demo is shared and sometimes slow                                                                                          |
+| `SLOW_MO`                                                                                      | `0`                                   | Milliseconds to slow each action, for demos and debugging                                                                                         |
+| `ACTION_TIMEOUT` · `NAVIGATION_TIMEOUT` · `EXPECT_TIMEOUT` · `TEST_TIMEOUT` · `SETTLE_TIMEOUT` | `15s` · `45s` · `10s` · `90s` · `30s` | The five budgets; `settle` is the app committing to a state by itself (spinner clearing, grid settling, a form finishing its post-mount XHR fill) |
+| `TRACE`                                                                                        | `on-first-retry`                      | Playwright trace mode                                                                                                                             |
+
+Two more are set by tooling rather than by hand: **`BLOB_REPORT=true`** switches the reporter to
+`blob` for a sharded CI run (see [CI](#ci)), and **`ALL_BROWSERS=true`** adds the opt-in `firefox`
+and `webkit` projects. `CI` is read from the environment to pick the CI-side defaults above.
 
 Credentials are read from the environment, never committed: `.env` is git-ignored, and CI reads
 `secrets.ADMIN_USERNAME` / `secrets.ADMIN_PASSWORD` (defaulting to the demo's published account).
