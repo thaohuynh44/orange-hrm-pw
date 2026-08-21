@@ -56,8 +56,16 @@ first — they explain most of the rest.
 4. **`src/api/pim.api.ts`** — a **read-only** REST client built from `page.request`, so it rides the
    browser's authenticated session with no separate login. Journeys use it to confirm from the API
    what they just did through the UI. It never drives the app; that is the UI's job.
-5. **`src/fixtures/test.fixture.ts`** — every page object, and the API client, is a fixture. Specs
-   import `test`/`expect` from here, never from `@playwright/test` directly.
+5. **`src/fixtures/`** — everything a spec is handed, one module per kind, composed by
+   `test.fixture.ts` with `mergeTests`. Specs import `test`/`expect` from `test.fixture.ts`, never
+   from `@playwright/test` directly, and never from the modules behind it:
+   - `pages.fixture.ts` — one fixture per screen, each a page object on the test's own `page`.
+   - `api.fixture.ts` — the read-only REST clients. Not a page object, so not in with them.
+   - `session.fixture.ts` — `secondSession` and `chromeFor`: the pages no page object owns.
+   - `access-control.fixture.ts` — the worker-scoped ESS provisioning. The only fixtures that
+     write to the demo, which is why they are quarantined in a file of their own.
+
+   A new fixture goes in the module that matches what it _is_; `test.fixture.ts` only composes.
 
 ### Authentication is done once, not per test
 

@@ -88,7 +88,12 @@ one fact; each links to the section that expands on it.
 │   │   └── admin/system-users.page.ts  admin/add-user.page.ts
 │   ├── api/pim.api.ts          Read-only PIM REST client for API-level verification
 │   ├── tasks/                  Business actions for journeys (hire, amend, delete, grant ESS)
-│   ├── fixtures/test.fixture.ts  Page objects + API client injected into tests
+│   ├── fixtures/               What a spec is handed, one module per kind
+│   │   ├── test.fixture.ts       Composes the four below - specs import test/expect here
+│   │   ├── pages.fixture.ts      One page object per screen
+│   │   ├── api.fixture.ts        Read-only REST clients
+│   │   ├── session.fixture.ts    secondSession + chromeFor (pages with no page object)
+│   │   └── access-control.fixture.ts  Worker-scoped ESS provisioning (@write)
 │   ├── data/                   credentials.ts, employee.factory.ts, account.factory.ts (faker),
 │   │                           fixtures/avatar.png (upload test image)
 │   └── utils/logger.ts
@@ -426,7 +431,8 @@ while scheduled runs sit in their own group so a push can never cancel the night
 ## Adding a test
 
 1. Add or extend a page object under `src/pages/`, giving it a `path` and an `expectLoaded()`.
-2. Expose it as a fixture in `src/fixtures/test.fixture.ts`.
+2. Expose it as a fixture in `src/fixtures/pages.fixture.ts` (API clients go in
+   `api.fixture.ts`; `test.fixture.ts` only composes the modules).
 3. Write the spec against the fixture and tag it:
 
 ```ts
