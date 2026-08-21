@@ -24,3 +24,7 @@ probe*.mjs
 
 # Browser snapshots dumped by the playwright-test MCP server
 /.playwright-mcp/
+
+# Generated plans/designs under specs/ - keep the README only
+/specs/*
+!/specs/README.md
