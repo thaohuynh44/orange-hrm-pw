@@ -43,6 +43,13 @@ export const env = {
     password: str('ADMIN_PASSWORD', 'admin123'),
   },
 
+  /**
+   * Sharded CI runs write a `blob` report instead of HTML/JUnit, because a per-shard
+   * report only describes its own slice. `merge-reports` stitches the blobs from every
+   * shard back into one HTML and one JUnit report for the run as a whole.
+   */
+  blobReport: bool('BLOB_REPORT', false),
+
   headless: bool('HEADLESS', true),
   slowMo: int('SLOW_MO', 0),
   workers: int('WORKERS', isCI ? 2 : 4),

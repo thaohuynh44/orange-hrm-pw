@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main, master, develop]
   schedule:
-    # Nightly regression at 02:00 UTC
+    # Nightly regression at 02:00 UTC - this is where the @write suites and the journeys run.
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
@@ -14,6 +14,19 @@ on:
         description: 'Only run tests matching this tag (e.g. @smoke)'
         required: false
         default: ''
+
+# The target is a public demo instance shared with the world, so two runs of the same ref
+# racing each other means duplicated writes and avoidable flake. Superseded PR/push runs are
+# cancelled; scheduled runs get their own group so a push to main can never cancel the nightly.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+env:
+  CI: true
+  BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
+  ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME || 'Admin' }}
+  ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'admin123' }}
 
 jobs:
   static-analysis:
@@ -31,15 +44,18 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
 
+  # Read-only feature tests: the PR path. Sharded rather than split by project, so Playwright
+  # balances the load itself - splitting by project put ~80% of the tests on one leg. Each shard
+  # runs the `setup` project first (it is a dependency of `chromium`) and so logs in once.
   e2e:
-    name: Playwright (${{ matrix.project }})
+    name: Features (shard ${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     needs: static-analysis
     strategy:
       fail-fast: false
       matrix:
-        project: [guest, chromium]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,30 +64,112 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+      # Every project in playwright.config.ts is Chromium-based; Firefox and WebKit are
+      # opt-in via ALL_BROWSERS, which CI never sets.
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
 
       - name: Run tests
-        run: npx playwright test --project=${{ matrix.project }} --grep-invert @flow ${{ github.event.inputs.grep && format('--grep {0}', github.event.inputs.grep) || '' }}
+        run: npm run test:features:readonly -- --shard=${{ matrix.shard }}/${{ strategy.job-total }} ${{ inputs.grep && format('--grep {0}', inputs.grep) || '' }}
         env:
-          CI: true
-          BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
-          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME || 'Admin' }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'admin123' }}
+          BLOB_REPORT: true
+
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          retention-days: 7
+
+  # One HTML report and one JUnit XML for the whole matrix, instead of a partial pair per shard.
+  report:
+    name: Merge reports
+    # Runs even when shards failed - that report is the point. Skipped along with `e2e` when
+    # static analysis gates the run, since there would be no blob artifacts to download.
+    if: ${{ !cancelled() && needs.e2e.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-report-*
+          path: all-blob-reports
+          merge-multiple: true
+
+      # Reporter output paths come from playwright.config.ts, hence --config.
+      - run: npm run report:merge
+
+      - name: Upload HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-features
+          path: playwright-report/
+          retention-days: 14
+
+      # Published on success too: a green run's JUnit XML is what test-trend tooling consumes.
+      - name: Upload JUnit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-features
+          path: test-results/junit.xml
+          retention-days: 14
+
+  # @write feature tests create employees, and one of them provisions an ESS login account the
+  # demo gives no way to delete. Off the PR path for that reason - a merged PR would otherwise
+  # leave an account behind on a public instance every time.
+  write-suites:
+    name: Features (@write)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: static-analysis
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # Unsharded and single-worker on purpose: the ESS fixture is worker-scoped, so one worker
+      # means the whole run provisions exactly one account.
+      - name: Run tests
+        run: npm run test:features:write -- --workers=1
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.project }}
+          name: playwright-report-write
           path: playwright-report/
+          retention-days: 14
+
+      - name: Upload JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-write
+          path: test-results/junit.xml
           retention-days: 14
 
       - name: Upload traces & screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-artifacts-${{ matrix.project }}
+          name: test-artifacts-write
           path: test-results/
           retention-days: 7
 
@@ -91,16 +189,11 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
 
       - name: Run journeys
         run: npm run test:flows
-        env:
-          CI: true
-          BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
-          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME || 'Admin' }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD || 'admin123' }}
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}
@@ -109,3 +202,21 @@ jobs:
           name: playwright-report-flows
           path: playwright-report/
           retention-days: 14
+
+      - name: Upload JUnit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-flows
+          path: test-results/junit.xml
+          retention-days: 14
+
+      # Journeys are the slowest and most stateful suite, so a failure here is the one most
+      # worth having a trace for.
+      - name: Upload traces & screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-flows
+          path: test-results/
+          retention-days: 7
