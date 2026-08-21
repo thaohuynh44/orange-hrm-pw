@@ -14,9 +14,12 @@ test.describe('PIM - Employee List', { tag: '@pim' }, () => {
     // The grid pages at 50 records.
     expect(rows).toBeLessThanOrEqual(50);
 
+    // Identity is asserted on the name, not on the Id: Employee Id is optional in the app
+    // (the API returns `employeeId: null` for records saved without one, and the demo holds
+    // plenty), whereas first and last name are both required by Add Employee.
     const first = await employeeListPage.rowAt(0);
-    expect(first.id).not.toBe('');
     expect(first.firstAndMiddleName).not.toBe('');
+    expect(first.lastName).not.toBe('');
   });
 
   test('table exposes the documented columns', async ({ employeeListPage }) => {
@@ -87,7 +90,9 @@ test.describe('PIM - Employee List', { tag: '@pim' }, () => {
     await employeeListPage.reset();
 
     expect(await employeeListPage.employmentStatus.selectedValue()).toContain('Select');
-    expect(await employeeListPage.recordCount()).toBe(total);
+    // Not `toBe(total)`: the demo is shared, so other people's writes move the unfiltered
+    // count during the test. Reset having cleared the filter is what this asserts.
+    expect(await employeeListPage.recordCount()).toBeGreaterThan(filtered);
   });
 
   test('Add opens the Add Employee form', async ({ employeeListPage, addEmployeePage, page }) => {
