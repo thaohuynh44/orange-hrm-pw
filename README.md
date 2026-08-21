@@ -92,7 +92,8 @@ one fact; each links to the section that expands on it.
 │   │   ├── test.fixture.ts       Composes the four below - specs import test/expect here
 │   │   ├── pages.fixture.ts      One page object per screen
 │   │   ├── api.fixture.ts        Read-only REST clients
-│   │   ├── session.fixture.ts    secondSession + chromeFor (pages with no page object)
+│   │   ├── session.fixture.ts    secondSession (a page in its own context)
+│   │   ├── chrome.fixture.ts     chromeFor (chrome for a page with no page object)
 │   │   └── access-control.fixture.ts  Worker-scoped ESS provisioning (@write)
 │   ├── data/                   credentials.ts, employee.factory.ts, account.factory.ts (faker),
 │   │                           fixtures/avatar.png (upload test image)

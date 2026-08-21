@@ -61,7 +61,8 @@ first — they explain most of the rest.
    from `@playwright/test` directly, and never from the modules behind it:
    - `pages.fixture.ts` — one fixture per screen, each a page object on the test's own `page`.
    - `api.fixture.ts` — the read-only REST clients. Not a page object, so not in with them.
-   - `session.fixture.ts` — `secondSession` and `chromeFor`: the pages no page object owns.
+   - `session.fixture.ts` — `secondSession`: extra browser sessions, each owning its context.
+   - `chrome.fixture.ts` — `chromeFor`: the shared chrome bound to a page with no page object.
    - `access-control.fixture.ts` — the worker-scoped ESS provisioning. The only fixtures that
      write to the demo, which is why they are quarantined in a file of their own.
 
