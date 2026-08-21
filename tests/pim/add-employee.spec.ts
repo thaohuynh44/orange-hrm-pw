@@ -18,11 +18,17 @@ test.describe('PIM - Add Employee', { tag: ['@pim', '@write'] }, () => {
   });
 
   test('requires first and last name', async ({ addEmployeePage }) => {
+    // The Employee Id is replaced with a generated one before submitting: the app's
+    // prefilled id periodically collides with a record another user of the shared demo
+    // created, which adds a third "Employee Id already exists" message to the count below.
+    await addEmployeePage.employeeIdInput.fill(buildEmployee().employeeId);
     await addEmployeePage.submitEmpty();
 
-    const messages = await addEmployeePage.validationMessages();
-    expect(messages).toHaveLength(2);
-    expect(new Set(messages)).toEqual(new Set(['Required']));
+    // Web-first rather than a snapshot of the list: the app renders each field's message
+    // independently, so reading them once the first has appeared undercounts the set.
+    await expect(addEmployeePage.validationErrors).toHaveCount(2);
+    await expect(addEmployeePage.errorFor(addEmployeePage.firstNameInput)).toHaveText('Required');
+    await expect(addEmployeePage.errorFor(addEmployeePage.lastNameInput)).toHaveText('Required');
   });
 
   test('creates an employee and shows it in the employee list', async ({
