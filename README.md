@@ -89,6 +89,7 @@ Cross-browser runs are opt-in so the default run stays fast: `npm run test:all-b
 | `npm run test:pim`          | `@pim` tests; also `test:admin`, `test:auth`       |
 | `npm run test:flows`        | Journeys only (`tests/flows/`)                     |
 | `npm run test:features`     | Everything except journeys (`--grep-invert @flow`) |
+| `npm run report:merge`      | Stitch sharded CI `blob` reports into one report   |
 | `npm run test:seed`         | The agent seed file, to check it is still green    |
 | `npm run test:all-browsers` | Chromium + Firefox + WebKit                        |
 | `npm run report`            | Open the HTML report                               |
@@ -100,14 +101,14 @@ Cross-browser runs are opt-in so the default run stays fast: `npm run test:all-b
 
 Every test carries at least one **scope** tag; **trait** tags stack on top of it.
 
-| Tag                          | Kind  | Meaning                                           | Selected by                         |
-| ---------------------------- | ----- | ------------------------------------------------- | ----------------------------------- |
-| `@pim`, `@admin`, `@my-info` | scope | the module under test                             | `npm run test:pim`, `test:admin`    |
-| `@auth`                      | scope | sign-in and session, runs signed out              | `npm run test:auth`                 |
-| `@flow`                      | scope | cross-module journey, nightly not PR              | `npm run test:flows`                |
-| `@seed`                      | scope | the agent seed file, kept green for the subagents | —                                   |
-| `@smoke`                     | trait | critical path, safe to run anywhere               | `npm run test:smoke`                |
-| `@write`                     | trait | **creates data on the shared demo instance**      | excluded by `npm run test:readonly` |
+| Tag                          | Kind  | Meaning                                           | Selected by                                                    |
+| ---------------------------- | ----- | ------------------------------------------------- | -------------------------------------------------------------- |
+| `@pim`, `@admin`, `@my-info` | scope | the module under test                             | `npm run test:pim`, `test:admin`                               |
+| `@auth`                      | scope | sign-in and session, runs signed out              | `npm run test:auth`                                            |
+| `@flow`                      | scope | cross-module journey, nightly not PR              | `npm run test:flows`                                           |
+| `@seed`                      | scope | the agent seed file, kept green for the subagents | —                                                              |
+| `@smoke`                     | trait | critical path, safe to run anywhere               | `npm run test:smoke`                                           |
+| `@write`                     | trait | **creates data on the shared demo instance**      | excluded by `npm run test:readonly`, and off the PR path in CI |
 
 Rules of thumb:
 
@@ -244,7 +245,7 @@ reasons and are read by different people, so they live apart.
 | Asserts | fields, validation, filters, empty states | the seams between modules and roles        |
 | Size    | seconds, dozens of them                   | tens of seconds, a handful of them         |
 | Data    | mostly read-only                          | almost always `@write`                     |
-| Runs    | every push                                | nightly / on demand (`npm run test:flows`) |
+| Runs    | every push, unless `@write`               | nightly / on demand (`npm run test:flows`) |
 | Tag     | `@pim`, `@admin`, `@my-info`, ...         | `@flow` (plus `@write`)                    |
 
 A journey does **not** re-assert what feature tests already cover. `hire-to-ess-access` never
@@ -338,11 +339,25 @@ Credentials are read from the environment, never committed: `.env` is git-ignore
 
 `.github/workflows/playwright.yml` runs on push, PR, nightly at 02:00 UTC and on demand:
 
-1. **static-analysis** — typecheck, lint, format check.
-2. **e2e** — a matrix of the `guest` and `chromium` projects with `@flow` excluded, uploading the
-   HTML report always (`if: !cancelled()`) and traces/screenshots/videos on failure.
-3. **flows** — the `@flow` journeys, on the nightly schedule and `workflow_dispatch` only, since
-   they are slower and write to the shared demo. Uploads its own HTML report.
+1. **static-analysis** — typecheck, lint, format check. Gates everything below.
+2. **e2e** — the read-only feature tests (`@flow` and `@write` both excluded), split across a
+   4-way `--shard` matrix so Playwright balances the load itself. Each shard writes a `blob`
+   report rather than its own partial HTML.
+3. **report** — merges those blobs into **one** HTML report and **one** JUnit XML for the run,
+   and publishes both. Runs even when shards failed, which is when the report matters most.
+4. **write-suites** — the `@write` feature tests, nightly and on demand only. Single-worker, so
+   the worker-scoped ESS fixture provisions exactly one account per run.
+5. **flows** — the `@flow` journeys, nightly and on demand only, since they are slower and write
+   the most. Publishes its own HTML report, JUnit XML, and traces on failure.
+
+Only the PR path is read-only. `@write` runs off it deliberately: creating an employee is
+reversible, but the ESS login account `tests/access-control/` provisions is not, so putting it on
+every push would leave an account behind on a public instance each time a PR was updated.
+
+Traces, screenshots and videos are embedded in the HTML report, and the `@write`/`flows` jobs also
+upload the raw `test-results/` on failure. A `concurrency` group cancels superseded PR and push
+runs — two runs of one ref against a shared demo only duplicate writes and manufacture flake —
+while scheduled runs sit in their own group so a push can never cancel the nightly.
 
 `workflow_dispatch` takes a `grep` input, so a single tag can be run on demand (e.g. `@smoke`).
 

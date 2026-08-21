@@ -1,5 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
+import type { ReporterDescription } from '@playwright/test';
 import { env } from './src/config/env';
+
+/**
+ * `list` everywhere, GitHub annotations in CI. A sharded run emits `blob` only - each shard
+ * sees a slice of the suite, so HTML/JUnit are produced once by `merge-reports` over all of
+ * them. Every other run writes its own HTML and JUnit report directly.
+ */
+const reporter: ReporterDescription[] = [['list']];
+if (env.isCI) reporter.push(['github']);
+if (env.blobReport) {
+  reporter.push(['blob']);
+} else {
+  reporter.push(['html', { outputFolder: 'playwright-report', open: 'never' }]);
+  reporter.push(['junit', { outputFile: 'test-results/junit.xml' }]);
+}
 
 /**
  * OrangeHRM demo - Playwright + TypeScript framework.
@@ -20,12 +35,7 @@ export default defineConfig({
   expect: {
     timeout: env.timeouts.expect,
   },
-  reporter: [
-    ['list'],
-    ['html', { outputFolder: 'playwright-report', open: 'never' }],
-    ['junit', { outputFile: 'test-results/junit.xml' }],
-    ...(env.isCI ? [['github'] as const] : []),
-  ],
+  reporter,
   use: {
     baseURL: env.baseUrl,
     headless: env.headless,
