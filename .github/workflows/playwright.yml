@@ -88,6 +88,18 @@ jobs:
           path: blob-report/
           retention-days: 7
 
+      # The blob carries the trace as an embedded attachment, which is enough for the HTML report
+      # and awkward for anything else. `scripts/ci-triage.mjs` wants the raw pair - trace.zip and
+      # the `error-context.md` beside it - so a failure on the PR path can be read without
+      # unpacking a report, the same way the @write and flows jobs already allow.
+      - name: Upload traces & screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-features-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 7
+
   # One HTML report and one JUnit XML for the whole matrix, instead of a partial pair per shard.
   report:
     name: Merge reports

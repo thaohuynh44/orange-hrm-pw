@@ -234,10 +234,18 @@ so account for every difference in those counts.
 `.claude/agents/` holds Playwright's planner / generator / healer subagents, driven through the
 `playwright-test` MCP server in `.mcp.json` (it drives a real browser against the demo). The
 commands in `.claude/commands/` are the entry points: `/probe`, `/new-test`, `/triage`,
-`/flake-check` for day-to-day work, `/plan-tests` → `/generate-tests` → `/heal-tests` to drive
-the agent loop, and `/architect` → `/refactor` for changes to the framework itself rather than to
-its coverage. `tests/seed.spec.ts` is the authenticated starting point those
+`/triage-ci`, `/flake-check` for day-to-day work, `/plan-tests` → `/generate-tests` →
+`/heal-tests` to drive the agent loop, and `/architect` → `/refactor` for changes to the framework
+itself rather than to its coverage. `tests/seed.spec.ts` is the authenticated starting point those
 agents use — keep it green.
+
+`/triage` is for a failure in front of you; **`/triage-ci` is for one that already happened on a
+runner**. It shells out to `scripts/ci-triage.mjs`, which resolves a failed Actions run through
+`gh`, downloads its artifacts, merges the shard blobs into one JSON report and pairs each failure
+with its trace, screenshot and `error-context.md`. Two things about it are load-bearing: the script
+classifies nothing (its `Pattern` line is a keyword match, and the command is told to contradict
+it), and a finished run's step summary is not writable from outside the run, so the report goes
+back as a PR comment — or a commit comment for a nightly on `main`, which has no PR.
 
 Generated tests must be rewritten into the conventions above before they are committed: fixtures
 instead of raw `@playwright/test`, page objects instead of inline selectors, no `waitForTimeout`.

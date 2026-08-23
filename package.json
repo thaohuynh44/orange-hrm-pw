@@ -21,6 +21,7 @@
     "report": "playwright show-report",
     "report:merge": "playwright merge-reports --config playwright.config.ts ./all-blob-reports",
     "report:summary": "node scripts/ci-summary.mjs test-results/report.json",
+    "triage:ci": "node scripts/ci-triage.mjs",
     "trace": "playwright show-trace",
     "codegen": "playwright codegen https://opensource-demo.orangehrmlive.com",
     "typecheck": "tsc --noEmit",
