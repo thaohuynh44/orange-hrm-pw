@@ -9,7 +9,7 @@ test.describe('Auth - Login', { tag: ['@auth', '@smoke'] }, () => {
   });
 
   test('renders the login form', async ({ loginPage }) => {
-    await expect(loginPage.heading).toHaveText('Login');
+    await expect(loginPage.heading).toHaveText('Sign In');
     await expect(loginPage.loginButton).toHaveText(/Login/);
     await expect(loginPage.branding).toBeVisible();
     await expect(loginPage.forgotPasswordLink).toBeVisible();

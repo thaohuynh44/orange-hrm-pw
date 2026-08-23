@@ -7,7 +7,7 @@ test.describe('PIM - Employee List', { tag: '@pim' }, () => {
 
   test('shows a populated employee table', async ({ employeeListPage }) => {
     const total = await employeeListPage.recordCount();
-    expect(total).toBeGreaterThan(0);
+    expect(total).toBe(143);
 
     const rows = await employeeListPage.rowCount();
     expect(rows).toBeGreaterThan(0);

@@ -42,7 +42,7 @@ test.describe('My Info', { tag: '@my-info' }, () => {
     await myInfoPage.openTab('Contact Details');
 
     await expect(page).toHaveURL(/pim\/contactDetails/);
-    await expect(page.getByRole('heading', { name: 'Contact Details' })).toBeVisible();
+    await expect(page.locator('.orangehrm-contact-details-heading')).toBeVisible();
   });
 
   test('nationality dropdown lists selectable values', async ({ myInfoPage }) => {
