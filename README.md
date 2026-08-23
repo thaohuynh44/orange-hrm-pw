@@ -423,6 +423,48 @@ while scheduled runs sit in their own group so a push can never cancel the night
 
 `workflow_dispatch` takes a `grep` input, so a single tag can be run on demand (e.g. `@smoke`).
 
+## Working on this repo
+
+`main` is the only long-lived branch. Every change arrives on a short-lived topic branch through a
+PR, and the branch is deleted when it merges — there is no `develop`, no release branch and no tag,
+because this repo publishes a signal rather than an artefact.
+
+Name the branch `<type>/<kebab-summary>`, where the type is what the change **is**:
+
+| Prefix      | For                                                 | Example                         |
+| ----------- | --------------------------------------------------- | ------------------------------- |
+| `test/`     | new or extended coverage                            | `test/pim-employee-id-filter`   |
+| `fix/`      | a test that is wrong, broken or flaky               | `fix/add-employee-id-collision` |
+| `flake/`    | a flakiness hunt — ships a fix or a linked `fixme`  | `flake/employee-list-settle`    |
+| `refactor/` | framework structure under `src/`, from a design doc | `refactor/fixture-modules`      |
+| `ci/`       | the workflow, reporting, `scripts/`                 | `ci/report-visibility`          |
+| `docs/`     | `README.md`, `CLAUDE.md`, `specs/`                  | `docs/branching-strategy`       |
+| `chore/`    | dependencies, config, tooling                       | `chore/playwright-1.63`         |
+
+Three rules, and they exist because each one has already been broken here:
+
+- **One branch, one change.** A branch that outlives its purpose stops describing its contents, and
+  then the PR title, the merge commit and CI's concurrency group all say the wrong thing.
+- **Never reuse a merged name.** Deleting the head branch at merge is on for this repo, so a
+  finished name is gone. Start the next change with `git switch -c` off an updated `main`.
+- **Rebase, don't back-merge.** `git pull --rebase origin main` keeps the ahead-count truthful and
+  the review diff limited to the change.
+
+### A green PR is not a full run
+
+The PR path runs `test:features:readonly`. `@write` and `@flow` are excluded on purpose — the target
+is a public demo and one `@write` suite provisions an ESS login the demo cannot delete — so those
+suites first run at 02:00 UTC, on `main`, **after** the merge.
+
+So when a branch touches what the nightly owns — `tests/flows/`, `src/tasks/`, the
+ESS-provisioning fixture under `src/fixtures/`, `src/data/employee.factory.ts` or any `@write`
+spec — get the full signal before merging. `workflow_dispatch` switches the `write-suites` and
+`flows` jobs on and accepts any ref: **Actions → E2E Tests → Run workflow →** pick the branch.
+With the GitHub CLI installed, `gh workflow run playwright.yml --ref <branch>` does the same.
+
+When the nightly goes red on `main`, open a `fix/` branch — don't revert first. On a shared instance
+whose data resets, a red nightly is as likely to be the demo as the merge; `/triage` decides which.
+
 ## Adding a test
 
 1. Add or extend a page object under `src/pages/`, giving it a `path` and an `expectLoaded()`.
