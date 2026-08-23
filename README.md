@@ -144,6 +144,7 @@ Cross-browser runs are opt-in so the default run stays fast: `npm run test:all-b
 | `npm run test:flows`        | Journeys only (`tests/flows/`)                     |
 | `npm run test:features`     | Everything except journeys (`--grep-invert @flow`) |
 | `npm run report:merge`      | Stitch sharded CI `blob` reports into one report   |
+| `npm run triage:ci`         | Fetch a failed GitHub Actions run into a bundle    |
 | `npm run test:seed`         | The agent seed file, to check it is still green    |
 | `npm run test:all-browsers` | Chromium + Firefox + WebKit                        |
 | `npm run report`            | Open the HTML report                               |
@@ -235,15 +236,15 @@ These were verified against the live site and are the usual sources of flakiness
 The repo is set up so Claude can explore the app, author tests and fix failures **within these
 conventions** rather than around them.
 
-| File                    | Role                                                                                                 |
-| ----------------------- | ---------------------------------------------------------------------------------------------------- |
-| `CLAUDE.md`             | Project memory: commands, architecture, conventions, verified quirks                                 |
-| `.claude/commands/`     | Repo-specific workflows: `/probe`, `/new-test`, `/triage`, `/flake-check`, `/architect`, `/refactor` |
-| `.claude/agents/`       | Playwright's planner / generator / healer subagents                                                  |
-| `.claude/prompts/`      | Playwright's plan → generate → heal prompt templates                                                 |
-| `.mcp.json`             | `playwright-test` MCP server — lets the agents drive a real browser                                  |
-| `.claude/settings.json` | Permission allowlist + Prettier-on-save hook                                                         |
-| `tests/seed.spec.ts`    | Authenticated starting point the agents run before exploring                                         |
+| File                    | Role                                                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `CLAUDE.md`             | Project memory: commands, architecture, conventions, verified quirks                                               |
+| `.claude/commands/`     | Repo-specific workflows: `/probe`, `/new-test`, `/triage`, `/triage-ci`, `/flake-check`, `/architect`, `/refactor` |
+| `.claude/agents/`       | Playwright's planner / generator / healer subagents                                                                |
+| `.claude/prompts/`      | Playwright's plan → generate → heal prompt templates                                                               |
+| `.mcp.json`             | `playwright-test` MCP server — lets the agents drive a real browser                                                |
+| `.claude/settings.json` | Permission allowlist + Prettier-on-save hook                                                                       |
+| `tests/seed.spec.ts`    | Authenticated starting point the agents run before exploring                                                       |
 
 ### The two workflows
 
@@ -256,6 +257,9 @@ conventions** rather than around them.
   tags, then proves it with `--repeat-each=3`.
 - `/triage` — reproduces failures with retries off and classifies each as test bug / race /
   shared-demo data / real app defect **before** editing anything.
+- `/triage-ci` — the same classification for a run you did not watch: it fetches the failed
+  Actions run's artifacts, rebuilds one failure list across the sharded and unsharded jobs, pairs
+  each failure with its trace and page state, and reports back both here and on the run itself.
 - `/flake-check @pim` — repeats tests with retries disabled and fixes waits at their source.
 
 **Framework work** — for changing the harness rather than the coverage:
@@ -422,12 +426,40 @@ Only the PR path is read-only. `@write` runs off it deliberately: creating an em
 reversible, but the ESS login account `tests/access-control/` provisions is not, so putting it on
 every push would leave an account behind on a public instance each time a PR was updated.
 
-Traces, screenshots and videos are embedded in the HTML report, and the `@write`/`flows` jobs also
-upload the raw `test-results/` on failure. A `concurrency` group cancels superseded PR and push
-runs — two runs of one ref against a shared demo only duplicate writes and manufacture flake —
-while scheduled runs sit in their own group so a push can never cancel the nightly.
+Traces, screenshots and videos are embedded in the HTML report, and every test job also uploads the
+raw `test-results/` on failure — the shards as `test-artifacts-features-<shard>`, so a PR failure
+carries the same trace-plus-`error-context.md` pair the nightly jobs do. A `concurrency` group
+cancels superseded PR and push runs — two runs of one ref against a shared demo only duplicate
+writes and manufacture flake — while scheduled runs sit in their own group so a push can never
+cancel the nightly.
 
 `workflow_dispatch` takes a `grep` input, so a single tag can be run on demand (e.g. `@smoke`).
+
+### Triaging a red run
+
+A finished run's artifacts outlive the runner, so a failure you did not watch is still readable.
+
+```bash
+npm run triage:ci                    # the most recent failed run
+npm run triage:ci -- 12345678901     # a specific run id
+npm run triage:ci -- --pr 7          # the latest failed run on that PR's branch
+npm run triage:ci -- --event schedule # the last red nightly
+npm run triage:ci -- --from ./downloaded # parse artifacts already on disk, no gh needed
+```
+
+`scripts/ci-triage.mjs` resolves the run through the GitHub CLI, downloads its artifacts, merges
+the shard blobs back into one JSON report, and writes a `triage-bundle.json` plus a readable
+`triage-digest.md`: every failed and flaky test with its suite, project, retry count, full error,
+the local path to its trace and screenshot, and the page state at the moment it failed. It needs
+`gh` installed and authenticated (`brew install gh && gh auth login`), and it classifies nothing —
+the digest's `Pattern` line is a keyword match, not a verdict.
+
+`/triage-ci` is the same fetch with the reasoning attached: it reads the bundle, opens the
+evidence, classifies each failure as test bug / race / shared-demo data / real app defect / CI
+infrastructure, reproduces the candidate locally with `--retries=0`, and reports back both in the
+terminal and on the run — as a PR comment, or a commit comment for a nightly on `main`. A finished
+run's step summary cannot be appended to from outside the run, which is why the report lands on the
+conversation rather than beside `ci-summary.mjs`'s output.
 
 ## Working on this repo
 
@@ -469,7 +501,8 @@ spec — get the full signal before merging. `workflow_dispatch` switches the `w
 With the GitHub CLI installed, `gh workflow run playwright.yml --ref <branch>` does the same.
 
 When the nightly goes red on `main`, open a `fix/` branch — don't revert first. On a shared instance
-whose data resets, a red nightly is as likely to be the demo as the merge; `/triage` decides which.
+whose data resets, a red nightly is as likely to be the demo as the merge; `/triage-ci` fetches
+that run and decides which.
 
 ## Adding a test
 
