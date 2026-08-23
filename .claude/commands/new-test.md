@@ -14,7 +14,8 @@ Follow `CLAUDE.md`. Work in this order — do not skip step 1.
    uncertain. Do not invent `.oxd-*` classes.
 3. **Page object, if the screen is new**: declare `path` (add the route to `src/config/env.ts`),
    implement `expectLoaded()`, reuse the OXD component wrappers, and register it as a fixture in
-   `src/fixtures/test.fixture.ts`.
+   `src/fixtures/pages.fixture.ts` (screens only - the other fixture modules are for REST clients,
+   extra sessions and ESS provisioning).
 4. **Write the spec** under the matching `tests/<module>/` folder: import from
    `src/fixtures/test.fixture.ts`, tag it (`@write` if it creates data), assert on shape rather
    than the demo's current data, and make at least one `expect()` call in the test itself.
