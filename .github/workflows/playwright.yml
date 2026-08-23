@@ -22,6 +22,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
+# Read-only by default. Only the `pages` job needs more, and it asks for it itself.
+permissions:
+  contents: read
+
 env:
   CI: true
   BASE_URL: ${{ vars.BASE_URL || 'https://opensource-demo.orangehrmlive.com' }}
@@ -106,8 +110,15 @@ jobs:
           path: all-blob-reports
           merge-multiple: true
 
-      # Reporter output paths come from playwright.config.ts, hence --config.
+      # Reporter output paths come from playwright.config.ts, hence --config. This renders all
+      # three file reporters for the run as a whole: HTML, JUnit and the JSON the summary reads.
       - run: npm run report:merge
+
+      # Puts the pass/fail/flaky counts on the run page itself, so a red X does not require
+      # downloading an artifact to find out which tests failed.
+      - name: Publish run summary
+        if: ${{ !cancelled() }}
+        run: node scripts/ci-summary.mjs test-results/report.json "Features (read-only)"
 
       - name: Upload HTML report
         uses: actions/upload-artifact@v4
@@ -148,6 +159,10 @@ jobs:
       # means the whole run provisions exactly one account.
       - name: Run tests
         run: npm run test:features:write -- --workers=1
+
+      - name: Publish run summary
+        if: ${{ !cancelled() }}
+        run: node scripts/ci-summary.mjs test-results/report.json "Features (@write)"
 
       - name: Upload HTML report
         if: ${{ !cancelled() }}
@@ -195,6 +210,10 @@ jobs:
       - name: Run journeys
         run: npm run test:flows
 
+      - name: Publish run summary
+        if: ${{ !cancelled() }}
+        run: node scripts/ci-summary.mjs test-results/report.json "E2E journeys (@flow)"
+
       - name: Upload HTML report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -220,3 +239,94 @@ jobs:
           name: test-artifacts-flows
           path: test-results/
           retention-days: 7
+
+  # One live site at https://<owner>.github.io/<repo>/, always showing the most recent
+  # deployed run. Every deploy replaces the last, so this is deliberately kept off the PR
+  # path: a PR run and a nightly would otherwise overwrite each other, and a fork PR has no
+  # write token to deploy with anyway. PRs get the step summary plus the report artifact.
+  #
+  # Whatever reports the run produced are published side by side under one landing page, so a
+  # nightly's journeys are reachable and not hidden behind the features report.
+  pages:
+    name: Publish report to Pages
+    # Publishes red runs too - a failing report is the one worth reading. Skipped when static
+    # analysis gated the run, since no report artifact would exist to publish.
+    if: >-
+      ${{ !cancelled()
+      && github.ref == 'refs/heads/main'
+      && github.event_name != 'pull_request'
+      && needs.report.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [report, write-suites, flows]
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    # The github-pages environment accepts one deployment at a time; a push to main landing
+    # while the nightly deploys would otherwise fail the run. Queue instead of cancelling, so
+    # the site ends up on the newer of the two.
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    steps:
+      # merge-multiple is off on purpose: each artifact keeps its own directory, which is what
+      # gives the landing page one entry per suite.
+      - name: Download report artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: playwright-report-*
+          path: downloads
+
+      - name: Assemble the site
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_SHA: ${{ github.sha }}
+          RUN_EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          : > suites.txt
+          for report in downloads/playwright-report-*; do
+            [ -d "$report" ] || continue
+            suite="${report##*/playwright-report-}"
+            mv "$report" "site/$suite"
+            echo "$suite" >> suites.txt
+          done
+          if [ ! -s suites.txt ]; then
+            echo "::error::no playwright-report-* artifacts were downloaded; nothing to publish"
+            exit 1
+          fi
+          {
+            echo '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            echo '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            echo '<title>OrangeHRM E2E reports</title>'
+            echo '<style>:root{color-scheme:light dark}'
+            echo 'body{font:16px/1.6 system-ui,sans-serif;max-width:44rem;margin:4rem auto;padding:0 1.5rem}'
+            echo 'h1{font-size:1.5rem;margin:0 0 .25rem}p{margin:0 0 2rem;opacity:.7;font-size:.9rem}'
+            echo 'ul{list-style:none;padding:0}li{margin:0 0 .5rem}'
+            echo 'a{display:block;padding:.9rem 1.1rem;border:1px solid currentColor;border-radius:.5rem;'
+            echo 'text-decoration:none;font-weight:600;color:inherit}a:hover{opacity:.7}</style>'
+            echo '</head><body><h1>OrangeHRM E2E reports</h1>'
+            echo "<p>Run #${RUN_NUMBER} &middot; ${RUN_EVENT} &middot; <code>${RUN_SHA:0:7}</code> &middot;"
+            echo "<a href=\"${SERVER}/${REPO}/actions/runs/${RUN_ID}\" style=\"display:inline;border:0;padding:0;text-decoration:underline\">workflow run</a></p>"
+            echo '<ul>'
+            while read -r suite; do
+              echo "<li><a href=\"./${suite}/\">${suite}</a></li>"
+            done < suites.txt
+            echo '</ul></body></html>'
+          } > site/index.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
