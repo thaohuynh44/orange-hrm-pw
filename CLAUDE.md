@@ -206,6 +206,20 @@ The Admin halves all live in one read-only mirror, `tests/access-control/admin-r
 (top bar, permitted routes, My Info permissions) - no provisioned account, no serial mode. Each role
 assertion only means something against its counterpart, so change the two together.
 
+## Branching
+
+`main` is the only long-lived branch. Start every change with `git switch -c <type>/<kebab-summary>`
+off an updated `main` — never continue on a branch that has already merged, and never reuse a merged
+name. Types: `test/` (coverage), `fix/` (a wrong or flaky test), `flake/` (a flakiness hunt),
+`refactor/` (structure under `src/`, from a `specs/*.design.md`), `ci/`, `docs/`, `chore/`. Take
+updates with `git pull --rebase origin main`, not by merging `main` in.
+
+A green PR is not a full run: the PR path is `test:features:readonly`, so `@write` and `@flow`
+first run at 02:00 UTC on `main`. If a change touches `tests/flows/`, `src/tasks/`, the
+ESS-provisioning fixture under `src/fixtures/`, `src/data/employee.factory.ts` or any `@write`
+spec, say so in the PR and tell the user to dispatch the workflow on the branch (Actions → E2E
+Tests → Run workflow) before merging — that is the only way to run those suites off the nightly.
+
 ## Changing the framework itself
 
 Coverage work and structural work have different failure modes, so they have different entry points.

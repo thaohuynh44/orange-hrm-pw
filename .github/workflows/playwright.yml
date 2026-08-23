@@ -1,10 +1,12 @@
 name: E2E Tests
 
 on:
+  # `main` is the only long-lived branch: every change arrives on a short-lived topic branch
+  # through a PR, so there is nothing else to trigger on. See "Working on this repo" in the README.
   push:
-    branches: [main, master, develop]
+    branches: [main]
   pull_request:
-    branches: [main, master, develop]
+    branches: [main]
   schedule:
     # Nightly regression at 02:00 UTC - this is where the @write suites and the journeys run.
     - cron: '0 2 * * *'
