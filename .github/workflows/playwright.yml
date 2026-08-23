@@ -272,6 +272,15 @@ jobs:
       group: github-pages
       cancel-in-progress: false
     steps:
+      # deploy-pages answers 404 "Not Found" when Pages has never been turned on for the repo,
+      # which reads like a missing artifact rather than a missing setting. enablement turns it on
+      # (source: GitHub Actions) using this job's `pages: write` token, so a fresh clone of this
+      # repo publishes without a visit to Settings first. A no-op once Pages is already enabled.
+      - name: Enable & configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       # merge-multiple is off on purpose: each artifact keeps its own directory, which is what
       # gives the landing page one entry per suite.
       - name: Download report artifacts
