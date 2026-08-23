@@ -4,8 +4,13 @@ import { env } from './src/config/env';
 
 /**
  * `list` everywhere, GitHub annotations in CI. A sharded run emits `blob` only - each shard
- * sees a slice of the suite, so HTML/JUnit are produced once by `merge-reports` over all of
- * them. Every other run writes its own HTML and JUnit report directly.
+ * sees a slice of the suite, so the file reporters are produced once by `merge-reports` over
+ * all of them. Every other run writes them directly.
+ *
+ * Three file reporters, none redundant: `html` is what a human opens, `junit` is what
+ * test-trend tooling consumes, and `json` is what `scripts/ci-summary.mjs` renders into the
+ * GitHub step summary - it is the only one of the three that reports a flake as a flake
+ * rather than as the pass it eventually became.
  */
 const reporter: ReporterDescription[] = [['list']];
 if (env.isCI) reporter.push(['github']);
@@ -14,6 +19,7 @@ if (env.blobReport) {
 } else {
   reporter.push(['html', { outputFolder: 'playwright-report', open: 'never' }]);
   reporter.push(['junit', { outputFile: 'test-results/junit.xml' }]);
+  reporter.push(['json', { outputFile: 'test-results/report.json' }]);
 }
 
 /**

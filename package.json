@@ -20,6 +20,7 @@
     "test:chromium": "playwright test --project=chromium --project=guest --project=setup",
     "report": "playwright show-report",
     "report:merge": "playwright merge-reports --config playwright.config.ts ./all-blob-reports",
+    "report:summary": "node scripts/ci-summary.mjs test-results/report.json",
     "trace": "playwright show-trace",
     "codegen": "playwright codegen https://opensource-demo.orangehrmlive.com",
     "typecheck": "tsc --noEmit",
